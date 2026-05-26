@@ -2,7 +2,6 @@ name: Monitor de Salidas
 
 on:
   schedule:
-    # Lunes a viernes a las 21:30 UTC (cierre NYSE ~21:00 UTC)
     - cron: "30 21 * * 1-5"
   workflow_dispatch:
 
@@ -29,7 +28,6 @@ jobs:
         env:
           GOOGLE_SA_JSON: ${{ secrets.GOOGLE_SA_JSON }}
           DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
-        working-directory: scripts
         run: python main.py
 
       - name: Notificar resultado (solo en fallo)
