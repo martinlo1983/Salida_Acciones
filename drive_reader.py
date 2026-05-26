@@ -32,7 +32,7 @@ SCOPES = [
 # ─── Nombres de archivo (override con env vars si querés renombrarlos) ────────
 FILE_NAMES = {
     "rendimiento":   os.getenv("DRIVE_FILE_RENDIMIENTO",   "PP_Tenencia.csv"),
-    "transacciones": os.getenv("DRIVE_FILE_TRANSACCIONES", "Todas_las_transacciones.csv"),
+    "transacciones": os.getenv("DRIVE_FILE_TRANSACCIONES", "PP_Transacciones.csv"),
     "satelites":     os.getenv("DRIVE_FILE_SATELITES",     "ETFs_Satelites.xlsx"),
     "acciones":      os.getenv("DRIVE_FILE_ACCIONES",      "Analizador_Acciones.xlsx"),
     "monitor":       os.getenv("DRIVE_FILE_MONITOR",       "SALIDAS_MONITOR.xlsx"),
