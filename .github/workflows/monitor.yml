@@ -5,7 +5,6 @@ on:
     # Día 1 de cada mes a las 10:00 UTC (07:00 Argentina)
     - cron: "0 10 1 * *"
   workflow_dispatch:
-    # Permite correr manualmente desde la UI de GitHub Actions
 
 jobs:
   monitor:
@@ -29,12 +28,10 @@ jobs:
       - name: Ejecutar monitor
         env:
           GOOGLE_SA_JSON: ${{ secrets.GOOGLE_SA_JSON }}
-          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}   # opcional
-        run: |
-          cd scripts
-          python main.py
+          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+        working-directory: scripts
+        run: python main.py
 
       - name: Notificar resultado (solo en fallo)
         if: failure()
-        run: |
-          echo "::error::El monitor de salidas falló. Revisar logs arriba."
+        run: echo "::error::El monitor de salidas falló. Revisar logs arriba."
