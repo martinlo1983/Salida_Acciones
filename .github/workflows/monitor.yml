@@ -1,9 +1,9 @@
-name: Monitor de Salidas — Ejecución Mensual
+name: Monitor de Salidas
 
 on:
   schedule:
-    # Día 1 de cada mes a las 10:00 UTC (07:00 Argentina)
-    - cron: "0 10 1 * *"
+    # Lunes a viernes a las 21:30 UTC (cierre NYSE ~21:00 UTC)
+    - cron: "30 21 * * 1-5"
   workflow_dispatch:
 
 jobs:
