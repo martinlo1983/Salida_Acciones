@@ -80,7 +80,6 @@ def main():
 
     # 2. Descargar archivos
     logger.info("Descargando archivos desde Google Drive...")
-    bytes_balance       = drive.download("balance")
     bytes_rendimiento   = drive.download("rendimiento")
     bytes_transacciones = drive.download("transacciones")
     bytes_satelites     = drive.download("satelites")
@@ -95,7 +94,7 @@ def main():
 
     # 3. Leer tenencia
     logger.info("Leyendo tenencia de Portfolio Performance...")
-    df_tenencia = leer_tenencia(bytes_balance, bytes_rendimiento, bytes_transacciones)
+    df_tenencia = leer_tenencia(bytes_rendimiento, bytes_transacciones)
     logger.info("Posiciones a analizar: %d", len(df_tenencia))
 
     # 4. Leer fuentes de enriquecimiento
