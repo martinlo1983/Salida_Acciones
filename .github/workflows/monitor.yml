@@ -1,0 +1,40 @@
+name: Monitor de Salidas — Ejecución Mensual
+
+on:
+  schedule:
+    # Día 1 de cada mes a las 10:00 UTC (07:00 Argentina)
+    - cron: "0 10 1 * *"
+  workflow_dispatch:
+    # Permite correr manualmente desde la UI de GitHub Actions
+
+jobs:
+  monitor:
+    name: Ejecutar monitor de salidas
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Ejecutar monitor
+        env:
+          GOOGLE_SA_JSON: ${{ secrets.GOOGLE_SA_JSON }}
+          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}   # opcional
+        run: |
+          cd scripts
+          python main.py
+
+      - name: Notificar resultado (solo en fallo)
+        if: failure()
+        run: |
+          echo "::error::El monitor de salidas falló. Revisar logs arriba."
