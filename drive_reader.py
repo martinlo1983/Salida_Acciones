@@ -2,21 +2,17 @@
 drive_reader.py
 ---------------
 Accede a Google Drive usando una Service Account y descarga los archivos
-fuente del sistema. Devuelve los bytes crudos para que cada módulo los
-parsee independientemente.
+fuente del sistema.
 
-Archivos esperados en Drive (configurables vía variables de entorno):
-  - PP_Balance_de_activos.csv
-  - PP_Valores_y_rendimiento_Rendimiento_de_los_activos.csv
-  - Todas_las_transacciones.csv
-  - ETFs_Satelites.xlsx
-  - Analizador_Acciones.xlsx
-  - SALIDAS_MONITOR.xlsx  (output — se crea si no existe)
+Soporta dos tipos de archivo:
+  - CSV/xlsx nativos: se descargan con get_media
+  - Google Sheets: se exportan como xlsx via export_media
 """
 
 import os
 import io
 import logging
+import tempfile
 from typing import Optional
 
 from google.oauth2.service_account import Credentials
@@ -25,33 +21,25 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
 logger = logging.getLogger(__name__)
 
-SCOPES = [
-    "https://www.googleapis.com/auth/drive",
-]
+SCOPES = ["https://www.googleapis.com/auth/drive"]
 
-# ─── Nombres de archivo (override con env vars si querés renombrarlos) ────────
+GSHEET_MIME = "application/vnd.google-apps.spreadsheet"
+XLSX_EXPORT_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+# ─── Nombres de archivo en Drive ─────────────────────────────────────────────
 FILE_NAMES = {
     "rendimiento":   os.getenv("DRIVE_FILE_RENDIMIENTO",   "PP_Tenencia.csv"),
     "transacciones": os.getenv("DRIVE_FILE_TRANSACCIONES", "PP_Transacciones.csv"),
-    "satelites":     os.getenv("DRIVE_FILE_SATELITES",     "ETFs_Satelites.xlsx"),
-    "acciones":      os.getenv("DRIVE_FILE_ACCIONES",      "Analizador_Acciones.xlsx"),
+    "satelites":     os.getenv("DRIVE_FILE_SATELITES",     "ETFs Satelites"),
+    "acciones":      os.getenv("DRIVE_FILE_ACCIONES",      "Analizador Acciones"),
     "monitor":       os.getenv("DRIVE_FILE_MONITOR",       "SALIDAS_MONITOR.xlsx"),
 }
 
-# ID de carpeta de Drive (opcional — si se deja vacío busca en todo Drive)
 DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID", "")
 
 
 class DriveClient:
     def __init__(self, service_account_json: str):
-        """
-        service_account_json: contenido JSON de la service account
-                              (viene del secret GOOGLE_SA_JSON en Actions)
-        """
-        import json
-        import tempfile
-
-        # Escribir JSON a archivo temporal que google-auth pueda leer
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             f.write(service_account_json)
             sa_path = f.name
@@ -61,11 +49,18 @@ class DriveClient:
         os.unlink(sa_path)
         logger.info("DriveClient inicializado correctamente.")
 
+        # LOG DE DIAGNÓSTICO — lista todos los archivos visibles para la service account
+        try:
+            all_files = self.service.files().list(
+                fields="files(id, name, mimeType)", pageSize=50
+            ).execute().get("files", [])
+            logger.info("Archivos visibles para la service account (%d):", len(all_files))
+            for af in all_files:
+                logger.info("  nombre='%s' | mime=%s", af["name"], af["mimeType"])
+        except Exception as e:
+            logger.warning("No se pudo listar archivos: %s", e)
+
     def _get_all_subfolder_ids(self, root_id: str) -> list[str]:
-        """
-        Devuelve el root_id más todos los IDs de subcarpetas (recursivo).
-        Necesario porque Drive no tiene búsqueda nativa de árbol completo.
-        """
         all_ids = [root_id]
         queue = [root_id]
         while queue:
@@ -85,15 +80,10 @@ class DriveClient:
                 queue.append(folder["id"])
         return all_ids
 
-    def _find_file_id(self, name: str) -> Optional[str]:
-        """
-        Busca el file ID por nombre dentro de la carpeta raíz y todas sus
-        subcarpetas. Si no hay carpeta raíz configurada, busca en todo Drive.
-        """
+    def _find_file(self, name: str) -> Optional[dict]:
+        """Retorna dict con {id, mimeType} o None si no encuentra."""
         if DRIVE_FOLDER_ID:
-            # Construir lista de todos los IDs de carpeta del árbol
             folder_ids = self._get_all_subfolder_ids(DRIVE_FOLDER_ID)
-            # La API admite hasta ~100 condiciones OR — en la práctica más que suficiente
             parents_clause = " or ".join(f"'{fid}' in parents" for fid in folder_ids)
             query = f"name = '{name}' and trashed = false and ({parents_clause})"
         else:
@@ -101,50 +91,63 @@ class DriveClient:
 
         result = (
             self.service.files()
-            .list(q=query, fields="files(id, name, parents)", pageSize=5)
+            .list(q=query, fields="files(id, name, mimeType)", pageSize=5)
             .execute()
         )
         files = result.get("files", [])
+        logger.info("Buscando '%s' — encontrados: %s", name, [(f["name"], f["mimeType"]) for f in files])
         if not files:
             return None
         if len(files) > 1:
-            logger.warning(
-                "Múltiples archivos con nombre '%s' en Drive — usando el primero.", name
-            )
-        return files[0]["id"]
+            logger.warning("Múltiples archivos '%s' en Drive — usando el primero.", name)
+        return files[0]
 
     def download(self, key: str) -> bytes:
-        """Descarga un archivo por su clave lógica (ver FILE_NAMES)."""
+        """
+        Descarga un archivo por su clave lógica.
+        Si es un Google Sheet, lo exporta como xlsx automáticamente.
+        """
         name = FILE_NAMES[key]
-        file_id = self._find_file_id(name)
-        if not file_id:
+        file_info = self._find_file(name)
+        if not file_info:
             raise FileNotFoundError(
                 f"Archivo '{name}' no encontrado en Drive. "
                 f"Verificá que esté compartido con la service account."
             )
+
         buffer = io.BytesIO()
-        request = self.service.files().get_media(fileId=file_id)
+        file_id = file_info["id"]
+        mime = file_info.get("mimeType", "")
+
+        if mime == GSHEET_MIME:
+            # Google Sheet → exportar como xlsx
+            request = self.service.files().export_media(
+                fileId=file_id, mimeType=XLSX_EXPORT_MIME
+            )
+            logger.info("Exportando Google Sheet '%s' como xlsx...", name)
+        else:
+            # Archivo nativo (csv, xlsx, etc.)
+            request = self.service.files().get_media(fileId=file_id)
+
         downloader = MediaIoBaseDownload(buffer, request)
         done = False
         while not done:
             _, done = downloader.next_chunk()
+
         logger.info("Descargado: %s (%d bytes)", name, buffer.tell())
         return buffer.getvalue()
 
     def upload_or_update(self, key: str, data: bytes, mime_type: str) -> str:
-        """
-        Sube o actualiza un archivo en Drive.
-        Si ya existe (por nombre), lo sobreescribe. Si no, lo crea.
-        Retorna el file ID resultante.
-        """
         name = FILE_NAMES[key]
-        file_id = self._find_file_id(name)
+        file_info = self._find_file(name)
         media = MediaIoBaseUpload(io.BytesIO(data), mimetype=mime_type, resumable=True)
 
-        if file_id:
-            self.service.files().update(fileId=file_id, media_body=media).execute()
+        if file_info:
+            self.service.files().update(
+                fileId=file_info["id"], media_body=media
+            ).execute()
             logger.info("Actualizado en Drive: %s", name)
-            return file_id
+            return file_info["id"]
         else:
             metadata = {"name": name}
             if DRIVE_FOLDER_ID:
