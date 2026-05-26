@@ -1,0 +1,7 @@
+google-auth==2.29.0
+google-api-python-client==2.127.0
+yfinance==0.2.40
+pandas==2.2.2
+openpyxl==3.1.2
+numpy==1.26.4
+requests==2.31.0
