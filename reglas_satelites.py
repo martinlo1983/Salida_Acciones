@@ -115,7 +115,7 @@ def leer_ranking(xlsx_bytes: bytes) -> pd.DataFrame:
     Lee la hoja RANKING del Excel de satélites.
     Retorna DataFrame con columnas: [ticker, grupo, rank_bruto, rank_efectivo, score]
     """
-    df = pd.read_excel(io.BytesIO(xlsx_bytes), sheet_name="RANKING", header=2)
+    df = pd.read_excel(io.BytesIO(xlsx_bytes), sheet_name="RANKING", header=3)
 
     # Los headers reales están en fila 2 (0-indexed)
     # Columnas esperadas: Rank Bruto, Rank Efect., Ticker, Grupo, Mom 12m, Mom 3m, Score, ...
@@ -127,7 +127,10 @@ def leer_ranking(xlsx_bytes: bytes) -> pd.DataFrame:
         "Rank Efect.":  "rank_efectivo",
         "Ticker":       "ticker",
         "Grupo":        "grupo",
+        "Mom 12m":      "mom_12m",
+        "Mom 3m":       "mom_3m",
         "Score":        "score",
+        "Estado":       "estado",
     }
     df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
 
