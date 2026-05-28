@@ -123,10 +123,17 @@ def leer_tenencia(
         df_rend["Plazo de Inversion (Nivel 1)"].isin(CATEGORIAS_OBJETIVO)
     ].copy()
 
-    # 2. Extraer ticker y precio compra USD
+    # 2. Extraer ticker, ganancia % y precio compra equivalente
     df_rend["ticker"] = df_rend["Nombre"].apply(extract_ticker)
-    df_rend["precio_compra_usd"] = df_rend["Precio de compra"].apply(parse_num)
     df_rend["cantidad"] = df_rend["Nº de títulos"].apply(parse_num)
+    df_rend["coste_compra_usd"] = df_rend["Coste de compra"].apply(parse_num)
+    df_rend["valor_mercado_usd"] = df_rend["Valor de mercado"].apply(parse_num)
+    # Ganancia % directa desde PP (ratio correcto independiente de conversión CEDEAR)
+    df_rend["ganancia_pct_pp"] = df_rend.apply(
+        lambda r: (r["valor_mercado_usd"] - r["coste_compra_usd"]) / r["coste_compra_usd"]
+        if r["coste_compra_usd"] > 0 else None,
+        axis=1
+    )
 
     # 3. Calcular fechas de primera compra desde transacciones
     df_tx = pd.read_csv(
@@ -137,7 +144,7 @@ def leer_tenencia(
 
     # 4. Armar DataFrame final
     cols_rend = ["Nombre", "Plazo de Inversion (Nivel 1)", "ticker",
-                 "precio_compra_usd", "cantidad"]
+                 "cantidad", "coste_compra_usd", "valor_mercado_usd", "ganancia_pct_pp"]
     df = df_rend[cols_rend].rename(columns={
         "Nombre": "nombre_pp",
         "Plazo de Inversion (Nivel 1)": "categoria",
