@@ -58,9 +58,10 @@ def _autofit(ws):
 
 COLS_ESTADO = [
     "fecha_run", "ticker", "categoria", "tipo_empresa",
-    "cantidad", "precio_compra_usd", "fecha_primera_compra",
+    "cantidad", "coste_compra_usd", "valor_mercado_usd",
+    "ganancia_pct", "ppp_equiv_usd", "fecha_primera_compra",
     "precio_actual_usd", "maximo_desde_entrada_usd",
-    "ganancia_pct", "sigma_mensual_12m",
+    "sigma_mensual_12m",
     # Satélites
     "grupo_satelite", "rank_bruto", "rank_efectivo",
     "score_etf", "score_top5", "delta_momentum",
