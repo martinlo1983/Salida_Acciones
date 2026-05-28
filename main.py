@@ -111,9 +111,9 @@ def main():
     errores    = []
 
     for _, pos in df_tenencia.iterrows():
-        ticker   = pos["ticker"]
-        cat      = pos["categoria"]
-        ppp_usd  = pos["precio_compra_usd"]
+        ticker        = pos["ticker"]
+        cat           = pos["categoria"]
+        ganancia_pp   = pos["ganancia_pct_pp"]   # ratio decimal desde PP (ej: 0.25)
         fecha_entrada = pos["fecha_primera_compra"]
 
         if pd.isna(fecha_entrada):
@@ -123,7 +123,7 @@ def main():
 
         logger.info("Procesando %s (%s)...", ticker, cat)
 
-        # Datos de mercado
+        # Datos de mercado del subyacente (NYSE)
         mercado = get_datos_mercado(ticker, fecha_entrada)
         precio_actual = mercado["precio_actual_usd"]
         maximo        = mercado["maximo_desde_entrada_usd"]
@@ -134,19 +134,27 @@ def main():
             errores.append(ticker)
             continue
 
-        ganancia_pct = (precio_actual / ppp_usd - 1) if ppp_usd > 0 else None
+        # Precio compra equivalente del subyacente (retrocomputado desde ganancia PP)
+        # ppp_equiv = precio_actual_subyacente / (1 + ganancia_pp)
+        ppp_equiv = (precio_actual / (1 + ganancia_pp)) if ganancia_pp is not None else None
+
+        # Máximo equivalente desde entrada (mismo ratio aplicado al máximo histórico)
+        # No es exacto pero es la mejor aproximación sin historial de compras en USD subyacente
+        maximo_equiv = maximo  # el máximo ya está en USD del subyacente
 
         # Base del resultado
         resultado = {
-            "ticker":                  ticker,
-            "categoria":               cat,
-            "cantidad":                pos.get("cantidad"),
-            "precio_compra_usd":       round(ppp_usd, 4),
-            "fecha_primera_compra":    fecha_entrada,
-            "precio_actual_usd":       round(precio_actual, 2) if precio_actual else None,
-            "maximo_desde_entrada_usd":round(maximo, 2) if maximo else None,
-            "ganancia_pct":            round(ganancia_pct * 100, 2) if ganancia_pct is not None else None,
-            "sigma_mensual_12m":       round(sigma * 100, 2) if sigma else None,
+            "ticker":                   ticker,
+            "categoria":                cat,
+            "cantidad":                 pos.get("cantidad"),
+            "coste_compra_usd":         round(pos["coste_compra_usd"], 2),
+            "valor_mercado_usd":        round(pos["valor_mercado_usd"], 2),
+            "ganancia_pct":             round(ganancia_pp * 100, 2) if ganancia_pp is not None else None,
+            "ppp_equiv_usd":            round(ppp_equiv, 2) if ppp_equiv else None,
+            "fecha_primera_compra":     fecha_entrada,
+            "precio_actual_usd":        round(precio_actual, 2),
+            "maximo_desde_entrada_usd": round(maximo, 2) if maximo else None,
+            "sigma_mensual_12m":        round(sigma * 100, 2) if sigma else None,
         }
 
         # ── Satélites ──────────────────────────────────────────────────────
@@ -159,7 +167,7 @@ def main():
             resultado["tipo_empresa"]   = None
 
             if sigma and maximo and ppp_usd:
-                s1 = calcular_stop_s1(grupo, ppp_usd, precio_actual, maximo, sigma)
+                s1 = calcular_stop_s1(grupo, ppp_equiv, precio_actual, maximo, sigma)
             else:
                 s1 = {"stop_s1_usd": None, "s1_activado": False,
                       "s1_detalle": "Sin datos suficientes para S1"}
@@ -190,8 +198,8 @@ def main():
             resultado["tipo_empresa"]   = tipo
             resultado["grupo_satelite"] = None
 
-            t1 = calcular_t1(tipo, ppp_usd, precio_actual)
-            t2 = calcular_t2(tipo, ppp_usd, precio_actual, maximo) if maximo else \
+            t1 = calcular_t1(tipo, ppp_equiv, precio_actual)
+            t2 = calcular_t2(tipo, ppp_equiv, precio_actual, maximo) if maximo else \
                  {"stop_t2_usd": None, "t2_activo": False, "t2_activado": False, "y_pct": None}
 
             # T3
