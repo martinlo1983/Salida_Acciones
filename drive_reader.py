@@ -31,7 +31,7 @@ FILE_NAMES = {
     "rendimiento":   os.getenv("DRIVE_FILE_RENDIMIENTO",   "PP_Tenencia.csv"),
     "transacciones": os.getenv("DRIVE_FILE_TRANSACCIONES", "PP_Transacciones.csv"),
     "satelites":     os.getenv("DRIVE_FILE_SATELITES",     "ETFs_Satelites"),
-    "acciones":      os.getenv("DRIVE_FILE_ACCIONES",      "Analizador Acciones"),
+    "acciones":      os.getenv("DRIVE_FILE_ACCIONES",      "Analizador_Acciones"),
     "monitor":       os.getenv("DRIVE_FILE_MONITOR",       "SALIDAS_MONITOR.xlsx"),
 }
 
