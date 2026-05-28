@@ -149,14 +149,8 @@ class DriveClient:
             logger.info("Actualizado en Drive: %s", name)
             return file_info["id"]
         else:
-            metadata = {"name": name}
-            if DRIVE_FOLDER_ID:
-                metadata["parents"] = [DRIVE_FOLDER_ID]
-            result = (
-                self.service.files()
-                .create(body=metadata, media_body=media, fields="id")
-                .execute()
+            raise FileNotFoundError(
+                f"Archivo '{name}' no encontrado en Drive para actualizar. "
+                f"Crealo manualmente en tu Drive, compartilo con la service account "
+                f"con permiso de Editor, y volvé a correr."
             )
-            new_id = result["id"]
-            logger.info("Creado en Drive: %s (id=%s)", name, new_id)
-            return new_id
