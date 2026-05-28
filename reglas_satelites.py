@@ -218,12 +218,12 @@ def evaluar_s2_s3(ticker: str, df_ranking: pd.DataFrame) -> dict:
         else:
             s2_decision = "ROTAR — fuera del top 10"
 
+    score_etf_str  = f"{score_etf:.4f}"  if score_etf  is not None else "N/A"
+    score_top5_str = f"{score_top5:.4f}" if score_top5 is not None else "N/A"
+    delta_str      = f"{delta:.1%}"      if delta      is not None else "N/A"
     detalle = (
         f"Rank bruto={rank_bruto} | Rank ef.={rank_ef} | "
-        f"Score={score_etf:.4f if score_etf else 'N/A'} | "
-        f"Score top5={score_top5:.4f if score_top5 else 'N/A'} | "
-        f"Δ={delta:.1%}" if delta is not None else
-        f"Rank bruto={rank_bruto} | Rank ef.={rank_ef}"
+        f"Score={score_etf_str} | Score top5={score_top5_str} | Δ={delta_str}"
     )
 
     return {
