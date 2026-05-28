@@ -166,7 +166,7 @@ def main():
             resultado["grupo_satelite"] = grupo
             resultado["tipo_empresa"]   = None
 
-            if sigma and maximo and ppp_usd:
+            if sigma and maximo and ppp_equiv:
                 s1 = calcular_stop_s1(grupo, ppp_equiv, precio_actual, maximo, sigma)
             else:
                 s1 = {"stop_s1_usd": None, "s1_activado": False,
