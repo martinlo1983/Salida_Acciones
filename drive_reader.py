@@ -30,7 +30,7 @@ XLSX_EXPORT_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.
 FILE_NAMES = {
     "rendimiento":   os.getenv("DRIVE_FILE_RENDIMIENTO",   "PP_Tenencia.csv"),
     "transacciones": os.getenv("DRIVE_FILE_TRANSACCIONES", "PP_Transacciones.csv"),
-    "satelites":     os.getenv("DRIVE_FILE_SATELITES",     "ETFs Satelites"),
+    "satelites":     os.getenv("DRIVE_FILE_SATELITES",     "ETFs_Satelites"),
     "acciones":      os.getenv("DRIVE_FILE_ACCIONES",      "Analizador Acciones"),
     "monitor":       os.getenv("DRIVE_FILE_MONITOR",       "SALIDAS_MONITOR.xlsx"),
 }
