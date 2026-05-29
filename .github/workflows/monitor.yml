@@ -30,6 +30,14 @@ jobs:
           DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
         run: python main.py
 
+      - name: Subir HTML como artefacto
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: salidas-monitor-${{ github.run_id }}
+          path: SALIDAS_MONITOR.html
+          retention-days: 30
+
       - name: Notificar resultado (solo en fallo)
         if: failure()
         run: echo "::error::El monitor de salidas falló. Revisar logs arriba."
