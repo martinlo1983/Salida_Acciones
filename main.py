@@ -271,7 +271,7 @@ def main():
         # Pasar historial previo + actual para la pestaña historial
         hist_prev = []
         if bytes_monitor_prev:
-            import io, pandas as pd
+            import io
             try:
                 df_hp = pd.read_excel(io.BytesIO(bytes_monitor_prev), sheet_name="HISTORIAL")
                 hist_prev = df_hp.to_dict("records")
