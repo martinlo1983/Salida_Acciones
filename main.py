@@ -45,6 +45,7 @@ from reglas_tacticos import (
     generar_alerta_tactico,
 )
 from output_writer import generar_excel
+from generar_html import generar_html
 
 # ─── Logging ─────────────────────────────────────────────────────────────────
 
@@ -264,7 +265,32 @@ def main():
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-    # 8. Resumen en stdout
+    # 8. Generar y subir HTML
+    logger.info("Generando dashboard HTML...")
+    try:
+        # Pasar historial previo + actual para la pestaña historial
+        hist_prev = []
+        if bytes_monitor_prev:
+            import io, pandas as pd
+            try:
+                df_hp = pd.read_excel(io.BytesIO(bytes_monitor_prev), sheet_name="HISTORIAL")
+                hist_prev = df_hp.to_dict("records")
+            except Exception:
+                pass
+        # Cambios del archivo previo
+        cambios_prev = []
+        if bytes_monitor_prev:
+            try:
+                df_cp = pd.read_excel(io.BytesIO(bytes_monitor_prev), sheet_name="CAMBIOS")
+                cambios_prev = df_cp.to_dict("records")
+            except Exception:
+                pass
+        html_bytes = generar_html(resultados, cambios_prev, hist_prev + resultados).encode("utf-8")
+        drive.upload_or_update("html", html_bytes, "text/html")
+    except Exception as e:
+        logger.warning("No se pudo generar/subir el HTML: %s", e)
+
+    # 9. Resumen en stdout
     print("\n" + "═" * 60)
     print(f"  SALIDAS MONITOR — {date.today().isoformat()}")
     print("═" * 60)
