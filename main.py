@@ -265,19 +265,17 @@ def main():
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-    # 8. Generar y subir HTML
+    # 8. Generar HTML y guardarlo como artefacto de Actions
     logger.info("Generando dashboard HTML...")
     try:
-        # Pasar historial previo + actual para la pestaña historial
+        import io
         hist_prev = []
         if bytes_monitor_prev:
-            import io
             try:
                 df_hp = pd.read_excel(io.BytesIO(bytes_monitor_prev), sheet_name="HISTORIAL")
                 hist_prev = df_hp.to_dict("records")
             except Exception:
                 pass
-        # Cambios del archivo previo
         cambios_prev = []
         if bytes_monitor_prev:
             try:
@@ -285,10 +283,12 @@ def main():
                 cambios_prev = df_cp.to_dict("records")
             except Exception:
                 pass
-        html_bytes = generar_html(resultados, cambios_prev, hist_prev + resultados).encode("utf-8")
-        drive.upload_or_update("html", html_bytes, "text/html")
+        html_str = generar_html(resultados, cambios_prev, hist_prev + resultados)
+        with open("SALIDAS_MONITOR.html", "w", encoding="utf-8") as f:
+            f.write(html_str)
+        logger.info("HTML guardado como SALIDAS_MONITOR.html")
     except Exception as e:
-        logger.warning("No se pudo generar/subir el HTML: %s", e)
+        logger.warning("No se pudo generar el HTML: %s", e)
 
     # 9. Resumen en stdout
     print("\n" + "═" * 60)
