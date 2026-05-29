@@ -137,6 +137,12 @@ class DriveClient:
         logger.info("Descargado: %s (%d bytes)", name, buffer.tell())
         return buffer.getvalue()
 
+    def download_sheet(self, key: str, sheet_name: str) -> "pd.DataFrame":
+        """Descarga una hoja específica de un Google Sheet como DataFrame."""
+        import pandas as pd
+        xlsx_bytes = self.download(key)
+        return pd.read_excel(io.BytesIO(xlsx_bytes), sheet_name=sheet_name)
+
     def upload_or_update(self, key: str, data: bytes, mime_type: str) -> str:
         name = FILE_NAMES[key]
         file_info = self._find_file(name)
