@@ -57,7 +57,7 @@ def _autofit(ws):
 # ─── Columnas del output ──────────────────────────────────────────────────────
 
 COLS_ESTADO = [
-    "fecha_run", "ticker", "categoria", "tipo_empresa",
+    "fecha_run", "ticker", "categoria", "tipo_empresa", "tipo_ab",
     "cantidad", "coste_compra_usd", "valor_mercado_usd",
     "ganancia_pct", "ppp_equiv_usd", "fecha_primera_compra",
     "precio_actual_usd", "maximo_desde_entrada_usd",
