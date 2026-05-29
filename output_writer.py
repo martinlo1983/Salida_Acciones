@@ -1,9 +1,11 @@
 """
 output_writer.py
 ----------------
-Genera el archivo SALIDAS_MONITOR.xlsx con dos hojas:
+Genera el archivo SALIDAS_MONITOR.xlsx con cuatro hojas:
   - ESTADO_ACTUAL : snapshot completo de la corrida más reciente
-  - HISTORIAL     : log acumulativo de cada corrida (una fila por posición por fecha)
+  - CAMBIOS       : solo novedades — posiciones que cambiaron de estado
+  - HISTORIAL     : log acumulativo de cada corrida
+  - CONFIG        : tabla manual ticker / tipo (A o B) — no se toca
 """
 
 import io
@@ -12,17 +14,16 @@ from datetime import datetime
 
 import pandas as pd
 from openpyxl import load_workbook
-from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+from openpyxl.styles import PatternFill, Font, Alignment
 from openpyxl.utils import get_column_letter
 
 logger = logging.getLogger(__name__)
 
-# Colores por alerta
-COLOR_VERDE   = "C6EFCE"
-COLOR_AMARILLO= "FFEB9C"
-COLOR_NARANJA = "FFCC99"
-COLOR_ROJO    = "FFC7CE"
-COLOR_HEADER  = "2F4F8F"
+COLOR_VERDE    = "C6EFCE"
+COLOR_AMARILLO = "FFEB9C"
+COLOR_NARANJA  = "FFCC99"
+COLOR_ROJO     = "FFC7CE"
+COLOR_HEADER   = "2F4F8F"
 
 EMOJI_COLOR = {
     "🟢": COLOR_VERDE,
@@ -31,30 +32,8 @@ EMOJI_COLOR = {
     "🔴": COLOR_ROJO,
 }
 
-
-def _apply_color(ws, row: int, col_start: int, col_end: int, hex_color: str):
-    fill = PatternFill(start_color=hex_color, end_color=hex_color, fill_type="solid")
-    for col in range(col_start, col_end + 1):
-        ws.cell(row=row, column=col).fill = fill
-
-
-def _style_header(ws, n_cols: int):
-    header_fill = PatternFill(start_color=COLOR_HEADER, end_color=COLOR_HEADER, fill_type="solid")
-    header_font = Font(color="FFFFFF", bold=True)
-    for col in range(1, n_cols + 1):
-        cell = ws.cell(row=1, column=col)
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal="center", wrap_text=True)
-
-
-def _autofit(ws):
-    for col in ws.columns:
-        max_len = max((len(str(cell.value or "")) for cell in col), default=10)
-        ws.column_dimensions[get_column_letter(col[0].column)].width = min(max_len + 2, 50)
-
-
-# ─── Columnas del output ──────────────────────────────────────────────────────
+# Orden de severidad para detectar si empeoró o mejoró
+SEVERIDAD = {"🟢": 0, "🟡": 1, "🟠": 2, "🔴": 3}
 
 COLS_ESTADO = [
     "fecha_run", "ticker", "categoria", "tipo_empresa", "tipo_ab",
@@ -76,52 +55,152 @@ COLS_ESTADO = [
     "alerta_emoji", "alerta_texto",
 ]
 
+COLS_CAMBIOS = [
+    "fecha_cambio", "ticker", "categoria",
+    "alerta_anterior", "texto_anterior",
+    "alerta_nueva", "texto_nuevo",
+    "direccion",   # EMPEORÓ / MEJORÓ
+]
+
+
+def _apply_color(ws, row: int, col_start: int, col_end: int, hex_color: str):
+    fill = PatternFill(start_color=hex_color, end_color=hex_color, fill_type="solid")
+    for col in range(col_start, col_end + 1):
+        ws.cell(row=row, column=col).fill = fill
+
+
+def _style_header(ws, n_cols: int):
+    fill = PatternFill(start_color=COLOR_HEADER, end_color=COLOR_HEADER, fill_type="solid")
+    font = Font(color="FFFFFF", bold=True)
+    for col in range(1, n_cols + 1):
+        cell = ws.cell(row=1, column=col)
+        cell.fill = fill
+        cell.font = font
+        cell.alignment = Alignment(horizontal="center", wrap_text=True)
+
+
+def _autofit(ws):
+    for col in ws.columns:
+        max_len = max((len(str(cell.value or "")) for cell in col), default=10)
+        ws.column_dimensions[get_column_letter(col[0].column)].width = min(max_len + 2, 55)
+
 
 def construir_fila(run_ts: datetime, datos: dict) -> dict:
-    """
-    Construye una fila normalizada para el Excel a partir del dict de resultados
-    de una posición.
-    """
     row = {"fecha_run": run_ts}
     for col in COLS_ESTADO[1:]:
         row[col] = datos.get(col)
     return row
 
 
+def _detectar_cambios(
+    df_actual: pd.DataFrame,
+    df_hist_prev: pd.DataFrame,
+    run_ts: datetime,
+) -> pd.DataFrame:
+    """
+    Compara el estado actual con la última corrida anterior por ticker.
+    Retorna filas de cambios nuevos (solo cuando cambia el emoji de alerta).
+    No repite un cambio si el ticker ya estaba en el mismo estado anterior.
+    """
+    if df_hist_prev.empty:
+        return pd.DataFrame(columns=COLS_CAMBIOS)
+
+    # Última corrida anterior por ticker
+    df_prev = (
+        df_hist_prev
+        .sort_values("fecha_run")
+        .groupby("ticker")
+        .last()
+        .reset_index()
+    )[["ticker", "alerta_emoji", "alerta_texto"]]
+
+    # Merge con estado actual
+    df_comp = df_actual[["ticker", "categoria", "alerta_emoji", "alerta_texto"]].merge(
+        df_prev, on="ticker", how="left", suffixes=("_nueva", "_anterior")
+    )
+
+    cambios = []
+    for _, row in df_comp.iterrows():
+        emoji_ant = str(row.get("alerta_emoji_anterior") or "🟢")
+        emoji_nue = str(row.get("alerta_emoji_nueva") or "🟢")
+
+        # Sin cambio → ignorar
+        if emoji_ant == emoji_nue:
+            continue
+
+        sev_ant = SEVERIDAD.get(emoji_ant, 0)
+        sev_nue = SEVERIDAD.get(emoji_nue, 0)
+        direccion = "EMPEORÓ" if sev_nue > sev_ant else "MEJORÓ"
+
+        cambios.append({
+            "fecha_cambio":    run_ts,
+            "ticker":          row["ticker"],
+            "categoria":       row["categoria"],
+            "alerta_anterior": emoji_ant,
+            "texto_anterior":  row.get("alerta_texto_anterior", ""),
+            "alerta_nueva":    emoji_nue,
+            "texto_nuevo":     row.get("alerta_texto_nueva", ""),
+            "direccion":       direccion,
+        })
+
+    return pd.DataFrame(cambios, columns=COLS_CAMBIOS)
+
+
 def generar_excel(
     filas: list[dict],
     bytes_existente: bytes | None = None,
 ) -> bytes:
-    """
-    Genera o actualiza el SALIDAS_MONITOR.xlsx.
-
-    - ESTADO_ACTUAL: siempre se sobreescribe con la corrida actual.
-    - HISTORIAL: se appendea. Si el archivo no existía, se crea desde cero.
-
-    Retorna los bytes del archivo resultante.
-    """
     run_ts = datetime.now()
     df_actual = pd.DataFrame([construir_fila(run_ts, f) for f in filas])
     df_actual = df_actual.reindex(columns=COLS_ESTADO)
 
-    # ── Cargar historial previo si existe ──────────────────────────────────
+    # ── Cargar hojas previas ───────────────────────────────────────────────
+    df_hist_prev = pd.DataFrame(columns=COLS_ESTADO)
+    df_cambios_prev = pd.DataFrame(columns=COLS_CAMBIOS)
+    df_config = pd.DataFrame(columns=["ticker", "tipo"])
+
     if bytes_existente:
-        try:
-            df_hist = pd.read_excel(
-                io.BytesIO(bytes_existente), sheet_name="HISTORIAL"
-            )
-        except Exception:
-            df_hist = pd.DataFrame(columns=COLS_ESTADO)
+        wb_prev = load_workbook(io.BytesIO(bytes_existente))
+        for sheet, df_target, cols in [
+            ("HISTORIAL", None,             COLS_ESTADO),
+            ("CAMBIOS",   None,             COLS_CAMBIOS),
+            ("CONFIG",    None,             ["ticker", "tipo"]),
+        ]:
+            if sheet in wb_prev.sheetnames:
+                try:
+                    df_read = pd.read_excel(io.BytesIO(bytes_existente), sheet_name=sheet)
+                    if sheet == "HISTORIAL":
+                        df_hist_prev = df_read
+                    elif sheet == "CAMBIOS":
+                        df_cambios_prev = df_read
+                    elif sheet == "CONFIG":
+                        df_config = df_read
+                except Exception as e:
+                    logger.warning("No se pudo leer hoja %s: %s", sheet, e)
+
+    # ── Detectar cambios nuevos ────────────────────────────────────────────
+    df_cambios_nuevos = _detectar_cambios(df_actual, df_hist_prev, run_ts)
+    df_cambios = pd.concat([df_cambios_prev, df_cambios_nuevos], ignore_index=True)
+
+    if not df_cambios_nuevos.empty:
+        logger.info(
+            "Cambios detectados: %d — %s",
+            len(df_cambios_nuevos),
+            df_cambios_nuevos[["ticker", "direccion", "alerta_nueva"]].to_dict("records"),
+        )
     else:
-        df_hist = pd.DataFrame(columns=COLS_ESTADO)
+        logger.info("Sin cambios de estado respecto a la corrida anterior.")
 
-    df_hist = pd.concat([df_hist, df_actual], ignore_index=True)
+    # ── Historial acumulativo ──────────────────────────────────────────────
+    df_hist = pd.concat([df_hist_prev, df_actual], ignore_index=True)
 
-    # ── Escribir a Excel ───────────────────────────────────────────────────
+    # ── Escribir Excel ─────────────────────────────────────────────────────
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
         df_actual.to_excel(writer, sheet_name="ESTADO_ACTUAL", index=False)
+        df_cambios.to_excel(writer, sheet_name="CAMBIOS", index=False)
         df_hist.to_excel(writer, sheet_name="HISTORIAL", index=False)
+        df_config.to_excel(writer, sheet_name="CONFIG", index=False)
 
     buf.seek(0)
     wb = load_workbook(buf)
@@ -129,31 +208,46 @@ def generar_excel(
     # ── Estilo ESTADO_ACTUAL ───────────────────────────────────────────────
     ws = wb["ESTADO_ACTUAL"]
     _style_header(ws, len(COLS_ESTADO))
-
-    # Columna de alerta_emoji para colorear filas
     emoji_col_idx = COLS_ESTADO.index("alerta_emoji") + 1
-
     for row_idx in range(2, ws.max_row + 1):
-        emoji_cell = ws.cell(row=row_idx, column=emoji_col_idx)
-        emoji = str(emoji_cell.value or "")
+        emoji = str(ws.cell(row=row_idx, column=emoji_col_idx).value or "")
         color = EMOJI_COLOR.get(emoji, "FFFFFF")
         _apply_color(ws, row_idx, 1, len(COLS_ESTADO), color)
-
     _autofit(ws)
     ws.freeze_panes = "A2"
 
-    # ── Estilo HISTORIAL ───────────────────────────────────────────────────
-    ws_hist = wb["HISTORIAL"]
-    _style_header(ws_hist, len(COLS_ESTADO))
-    _autofit(ws_hist)
-    ws_hist.freeze_panes = "A2"
+    # ── Estilo CAMBIOS ─────────────────────────────────────────────────────
+    ws_c = wb["CAMBIOS"]
+    _style_header(ws_c, len(COLS_CAMBIOS))
+    # Colorear por alerta_nueva
+    col_nueva_idx = COLS_CAMBIOS.index("alerta_nueva") + 1
+    col_dir_idx   = COLS_CAMBIOS.index("direccion") + 1
+    for row_idx in range(2, ws_c.max_row + 1):
+        emoji = str(ws_c.cell(row=row_idx, column=col_nueva_idx).value or "")
+        color = EMOJI_COLOR.get(emoji, "FFFFFF")
+        _apply_color(ws_c, row_idx, 1, len(COLS_CAMBIOS), color)
+        # Negrita en EMPEORÓ
+        dir_cell = ws_c.cell(row=row_idx, column=col_dir_idx)
+        if str(dir_cell.value) == "EMPEORÓ":
+            dir_cell.font = Font(bold=True)
+    _autofit(ws_c)
+    ws_c.freeze_panes = "A2"
 
-    # ── Serializar ─────────────────────────────────────────────────────────
+    # ── Estilo HISTORIAL ───────────────────────────────────────────────────
+    ws_h = wb["HISTORIAL"]
+    _style_header(ws_h, len(COLS_ESTADO))
+    _autofit(ws_h)
+    ws_h.freeze_panes = "A2"
+
+    # ── Estilo CONFIG (no tocar datos, solo header) ────────────────────────
+    ws_cfg = wb["CONFIG"]
+    _style_header(ws_cfg, ws_cfg.max_column)
+    _autofit(ws_cfg)
+
     out = io.BytesIO()
     wb.save(out)
     logger.info(
-        "SALIDAS_MONITOR.xlsx generado: %d posiciones, %d filas historial",
-        len(df_actual),
-        len(df_hist),
+        "SALIDAS_MONITOR generado: %d posiciones | %d cambios nuevos | %d historial",
+        len(df_actual), len(df_cambios_nuevos), len(df_hist),
     )
     return out.getvalue()
