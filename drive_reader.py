@@ -33,6 +33,7 @@ FILE_NAMES = {
     "satelites":     os.getenv("DRIVE_FILE_SATELITES",     "ETFs_Satelites"),
     "acciones":      os.getenv("DRIVE_FILE_ACCIONES",      "Analizador_Acciones"),
     "monitor":       os.getenv("DRIVE_FILE_MONITOR",       "SALIDAS_MONITOR"),
+    "html":          os.getenv("DRIVE_FILE_HTML",          "SALIDAS_MONITOR.html"),
 }
 
 DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID", "")
