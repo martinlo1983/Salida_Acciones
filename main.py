@@ -92,6 +92,23 @@ def main():
         logger.info("SALIDAS_MONITOR.xlsx no existe aún — se creará desde cero.")
         bytes_monitor_prev = None
 
+    # Leer hoja CONFIG de SALIDAS_MONITOR (tipo A/B por ticker)
+    tipo_posicion = {}
+    try:
+        df_config = drive.download_sheet("monitor", "CONFIG")
+        df_config.columns = [str(c).strip().lower() for c in df_config.columns]
+        if "ticker" in df_config.columns and "tipo" in df_config.columns:
+            df_config = df_config.dropna(subset=["ticker", "tipo"])
+            tipo_posicion = dict(zip(
+                df_config["ticker"].str.strip().str.upper(),
+                df_config["tipo"].str.strip().str.upper()
+            ))
+            logger.info("CONFIG cargada: %s", tipo_posicion)
+        else:
+            logger.warning("Hoja CONFIG no tiene columnas 'ticker' y 'tipo'")
+    except Exception as e:
+        logger.warning("No se pudo leer CONFIG desde SALIDAS_MONITOR: %s", e)
+
     # 3. Leer tenencia
     logger.info("Leyendo tenencia de Portfolio Performance...")
     df_tenencia = leer_tenencia(bytes_rendimiento, bytes_transacciones)
@@ -195,10 +212,13 @@ def main():
             # Tipo de empresa
             tipo_row = tipos_idx.loc[ticker] if ticker in tipos_idx.index else None
             tipo = str(tipo_row["tipo_empresa"]).upper() if tipo_row is not None else "GROWTH"
+            tipo_ab = tipo_posicion.get(ticker, "B")  # default B si no está configurado
             resultado["tipo_empresa"]   = tipo
             resultado["grupo_satelite"] = None
+            resultado["tipo_ab"] = tipo_ab
 
-            t1 = calcular_t1(tipo, ppp_equiv, precio_actual)
+            t1 = calcular_t1(tipo, ppp_equiv, precio_actual) if tipo_ab == "B" else \
+                 {"stop_t1_usd": None, "t1_activo": False, "t1_activado": False, "t1_detalle": "Tipo A — T1 no aplica"}
             t2 = calcular_t2(tipo, ppp_equiv, precio_actual, maximo) if maximo else \
                  {"stop_t2_usd": None, "t2_activo": False, "t2_activado": False, "y_pct": None}
 
