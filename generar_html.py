@@ -371,13 +371,16 @@ tr:hover td{background:#FAFAF8;cursor:pointer}
 .panel-title{font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;font-weight:500;display:flex;align-items:center;gap:6px}
 
 /* RULER */
-.ruler-wrap{position:relative;margin:6px 0 36px 0;height:52px}
-.ruler-track{position:absolute;top:22px;left:0;right:0;height:3px;background:#E8E6E0;border-radius:2px}
-.ruler-marker{position:absolute;display:flex;flex-direction:column;align-items:center;transform:translateX(-50%)}
-.ruler-dot{width:10px;height:10px;border-radius:50%;border:2px solid #fff;position:absolute;top:17px}
-.ruler-label{font-size:9px;color:#888780;white-space:nowrap;position:absolute;top:34px}
-.ruler-price{font-size:10px;font-weight:500;position:absolute;top:0;white-space:nowrap}
-.ruler-zone{position:absolute;top:20px;height:7px;border-radius:3px;opacity:.25}
+.ruler-wrap{position:relative;height:36px;margin-bottom:0}
+.ruler-track{position:absolute;top:16px;left:0;right:0;height:3px;background:#E8E6E0;border-radius:2px}
+.ruler-zone{position:absolute;top:16px;height:3px;border-radius:3px;opacity:.5}
+/* Legend table below ruler — siempre una fila, nunca se superpone */
+.ruler-legend{display:flex;gap:0;margin-top:8px;border:1px solid #E8E6E0;border-radius:6px;overflow:hidden;background:#fff}
+.ruler-leg-item{flex:1;padding:6px 8px;border-right:1px solid #E8E6E0;min-width:0}
+.ruler-leg-item:last-child{border-right:none}
+.ruler-leg-price{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ruler-leg-label{font-size:9px;color:#888780;text-transform:uppercase;letter-spacing:.03em;margin-top:1px;display:flex;align-items:center;gap:3px}
+.ruler-leg-dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex-shrink:0}
 
 /* STOPS TABLE */
 .stops-grid{display:flex;flex-direction:column;gap:6px}
@@ -586,43 +589,52 @@ function ruler(r) {
   const vals = [r.ppp_equiv_usd, r.precio_actual_usd, r.maximo_desde_entrada_usd,
                 r.stop_s1_usd, r.stop_t1_usd, r.stop_t2_usd].filter(v => v != null && v > 0);
   if (!vals.length) return '<div class="dim" style="padding:16px 0;text-align:center">Sin datos de precio</div>';
+
   const mn = Math.min(...vals) * 0.93, mx = Math.max(...vals) * 1.05, rng = mx - mn;
   const pct = v => ((v - mn) / rng * 100).toFixed(2);
 
-  const markers = [
-    { v: r.ppp_equiv_usd, color: '#7C3AED', label: 'PPP compra' },
-    { v: r.maximo_desde_entrada_usd, color: '#059669', label: 'Máximo' },
-    { v: r.precio_actual_usd, color: '#1D4ED8', label: 'Precio actual' },
-  ];
-  if (r.stop_s1_usd) markers.push({ v: r.stop_s1_usd, color: '#EA580C', label: 'Stop S1' });
-  if (r.stop_t1_usd && r.t1_activo) markers.push({ v: r.stop_t1_usd, color: '#DC2626', label: 'Stop T1' });
-  if (r.stop_t2_usd && r.t2_activo) markers.push({ v: r.stop_t2_usd, color: '#DC2626', label: 'Stop T2' });
+  // Definir marcadores ordenados de menor a mayor valor
+  const raw = [];
+  if (r.stop_t1_usd) raw.push({ v: r.stop_t1_usd, color: '#DC2626', label: r.t1_activo ? 'Stop T1' : 'Stop T1 (ref)', big: false });
+  if (r.stop_t2_usd && r.t2_activo) raw.push({ v: r.stop_t2_usd, color: '#B91C1C', label: 'Stop T2', big: false });
+  if (r.stop_s1_usd) raw.push({ v: r.stop_s1_usd, color: '#EA580C', label: 'Stop S1', big: false });
+  if (r.ppp_equiv_usd) raw.push({ v: r.ppp_equiv_usd, color: '#7C3AED', label: 'PPP compra', big: false });
+  raw.push({ v: r.precio_actual_usd, color: '#1D4ED8', label: 'Precio actual', big: true });
+  if (r.maximo_desde_entrada_usd) raw.push({ v: r.maximo_desde_entrada_usd, color: '#059669', label: 'Máximo', big: false });
+  const markers = raw.filter(m => m.v != null && m.v > 0).sort((a, b) => a.v - b.v);
 
   const gan = r.ganancia_pct || 0;
-  const zoneL = Math.min(pct(r.ppp_equiv_usd || 0), pct(r.precio_actual_usd || 0));
-  const zoneW = Math.abs(pct(r.ppp_equiv_usd || 0) - pct(r.precio_actual_usd || 0));
+  const zoneL = Math.min(+pct(r.ppp_equiv_usd || 0), +pct(r.precio_actual_usd || 0));
+  const zoneW = Math.abs(+pct(r.ppp_equiv_usd || 0) - +pct(r.precio_actual_usd || 0));
 
+  // ── Línea del ruler: solo puntos, sin texto encima/debajo ──────────────
   let html = '<div class="ruler-wrap"><div class="ruler-track"></div>';
-  html += '<div class="ruler-zone" style="left:' + zoneL + '%;width:' + zoneW + '%;background:' + (gan >= 0 ? '#059669' : '#DC2626') + '"></div>';
+  html += '<div class="ruler-zone" style="left:' + zoneL.toFixed(2) + '%;width:' + zoneW.toFixed(2) + '%;background:' + (gan >= 0 ? '#059669' : '#DC2626') + '"></div>';
+
+  // track está a top:16px y tiene height:3px → centro de la línea = 17.5px
+  // centramos cada dot sobre ese punto: top = 17.5 - size/2
   markers.forEach(m => {
-    const p = pct(m.v);
-    html += '<div class="ruler-marker" style="left:' + p + '%">';
-    html += '<div class="ruler-price" style="color:' + m.color + '">$' + Number(m.v).toFixed(2) + '</div>';
-    html += '<div class="ruler-dot" style="background:' + m.color + '"></div>';
-    html += '<div class="ruler-label">' + m.label + '</div>';
-    html += '</div>';
+    const p      = pct(m.v);
+    const size   = m.big ? 16 : 9;
+    const top    = Math.round(17.5 - size / 2);
+    const border = m.big ? '3px solid #fff' : '2px solid #fff';
+    const shadow = m.big ? ';box-shadow:0 0 0 2px ' + m.color + '55' : '';
+    html += '<div style="position:absolute;left:' + p + '%;top:' + top + 'px;' +
+            'width:' + size + 'px;height:' + size + 'px;border-radius:50%;' +
+            'background:' + m.color + ';border:' + border + ';transform:translateX(-50%)' + shadow + '"></div>';
   });
   html += '</div>';
 
-  const leg = [
-    { c: '#7C3AED', l: 'PPP compra' }, { c: '#1D4ED8', l: 'Precio actual' },
-    { c: '#059669', l: 'Máximo entrada' }, { c: '#EA580C', l: 'Stop S1' },
-    { c: '#DC2626', l: 'Stop T1 / T2' },
-  ];
-  html += '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px">';
-  leg.forEach(x => {
-    html += '<span style="display:flex;align-items:center;gap:5px;font-size:10px;color:#888780">' +
-            '<span style="width:8px;height:8px;border-radius:50%;background:' + x.c + ';display:inline-block"></span>' + x.l + '</span>';
+  // ── Leyenda debajo: tabla con una celda por marcador, nunca se superpone ──
+  // Ordenar en tabla de izquierda a derecha (mismo orden que en el ruler)
+  html += '<div class="ruler-legend">';
+  markers.forEach(m => {
+    const priceStr = '$' + Number(m.v).toFixed(2);
+    const priceCls = m.big ? 'font-weight:700;color:' + m.color : 'color:' + m.color;
+    html += '<div class="ruler-leg-item">' +
+              '<div class="ruler-leg-price" style="' + priceCls + '">' + priceStr + '</div>' +
+              '<div class="ruler-leg-label"><span class="ruler-leg-dot" style="background:' + m.color + '"></span>' + m.label + '</div>' +
+            '</div>';
   });
   html += '</div>';
   return html;
