@@ -266,7 +266,9 @@ def main():
     )
 
     # 8. Generar HTML y guardarlo como artefacto de Actions
-    logger.info("Generando dashboard HTML...")
+    logger.info("Generando dashboard HTML... resultados: %d", len(resultados))
+    if resultados:
+        logger.info("Primer resultado: %s", list(resultados[0].keys())[:5])
     try:
         import io
         hist_prev = []
