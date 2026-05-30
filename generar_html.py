@@ -67,15 +67,16 @@ def generar_html(resultados: list[dict], cambios: list[dict], historial: list[di
     for r in resultados:
         rows_estado.append({k: _safe(v) for k, v in r.items()})
 
-    data_js = json.dumps({
+    _data_js = json.dumps({
         "estado": rows_estado,
         "cambios": [{k: _safe(v) for k, v in c.items()} for c in cambios],
         "historial": [{k: _safe(v) for k, v in h.items()} for h in historial],
         "tooltips": TOOLTIPS,
         "fecha": fecha,
     }, default=str, ensure_ascii=False)
+    data_js = _data_js  # keep name for template
 
-    html = f"""<!DOCTYPE html>
+    _TEMPLATE = """<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -276,7 +277,7 @@ tr:hover td{{background:var(--bg3)}}
 </div>
 
 <script>
-const DATA = {data_js};
+const DATA = __DATA_PLACEHOLDER__;
 const filters = {{cat:'all', tipo:'all', alert:'all'}};
 let sortCol = null, sortDir = 1;
 
@@ -550,4 +551,5 @@ renderEstado();
 </script>
 </body>
 </html>"""
+    html = _TEMPLATE.replace("__DATA_PLACEHOLDER__", data_js)
     return html
