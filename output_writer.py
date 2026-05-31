@@ -161,11 +161,7 @@ def generar_excel(
 
     if bytes_existente:
         wb_prev = load_workbook(io.BytesIO(bytes_existente))
-        for sheet, df_target, cols in [
-            ("HISTORIAL", None,             COLS_ESTADO),
-            ("CAMBIOS",   None,             COLS_CAMBIOS),
-            ("CONFIG",    None,             ["ticker", "tipo"]),
-        ]:
+        for sheet in ["HISTORIAL", "CAMBIOS", "CONFIG"]:
             if sheet in wb_prev.sheetnames:
                 try:
                     df_read = pd.read_excel(io.BytesIO(bytes_existente), sheet_name=sheet)
@@ -174,9 +170,24 @@ def generar_excel(
                     elif sheet == "CAMBIOS":
                         df_cambios_prev = df_read
                     elif sheet == "CONFIG":
-                        df_config = df_read
+                        # Preservar TODAS las columnas que el usuario haya agregado.
+                        # Solo actualizar si tiene datos — nunca pisar con vacío.
+                        if not df_read.empty:
+                            df_config = df_read
+                            logger.info(
+                                "CONFIG cargada: %d filas, columnas: %s",
+                                len(df_config), list(df_config.columns)
+                            )
+                        else:
+                            df_config = df_read  # preserva estructura aunque esté vacía
+                            logger.warning("CONFIG existe pero está vacía — se preserva estructura.")
                 except Exception as e:
                     logger.warning("No se pudo leer hoja %s: %s", sheet, e)
+    else:
+        logger.warning(
+            "No hay Excel previo disponible — CONFIG se inicializa vacía. "
+            "Si ya tenías datos en CONFIG, verificá que el archivo se descargó correctamente de Drive."
+        )
 
     # ── Detectar cambios nuevos ────────────────────────────────────────────
     df_cambios_nuevos = _detectar_cambios(df_actual, df_hist_prev, run_ts)
