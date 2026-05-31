@@ -61,11 +61,10 @@ logger = logging.getLogger("main")
 # Si no querés que aplique T3 para un ticker, no lo incluyas aquí.
 # Valor en % anualizado (ej: 30 = 30% TIR anual objetivo).
 
-TIR_OBJETIVO = {
-    # "ORCL": 25,
-    # "ADBE": 30,
-    # "OXY":  20,
-}
+# TIR_OBJETIVO se lee ahora desde la hoja CONFIG del SALIDAS_MONITOR.xlsx
+# Columna: tir_objetivo (número entero o decimal, ej: 25 para 25% anual).
+# Si la celda está vacía para un ticker, T3 no aplica para esa posición.
+TIR_OBJETIVO = {}  # se puebla desde CONFIG más abajo
 
 
 # ─── Función principal ────────────────────────────────────────────────────────
@@ -93,20 +92,37 @@ def main():
         logger.info("SALIDAS_MONITOR.xlsx no existe aún — se creará desde cero.")
         bytes_monitor_prev = None
 
-    # Leer hoja CONFIG de SALIDAS_MONITOR (tipo A/B por ticker)
+    # Leer hoja CONFIG de SALIDAS_MONITOR (tipo A/B, TIR objetivo y comentarios)
     tipo_posicion = {}
     try:
         df_config = drive.download_sheet("monitor", "CONFIG")
         df_config.columns = [str(c).strip().lower() for c in df_config.columns]
         if "ticker" in df_config.columns and "tipo" in df_config.columns:
-            df_config = df_config.dropna(subset=["ticker", "tipo"])
-            tipo_posicion = dict(zip(
-                df_config["ticker"].str.strip().str.upper(),
-                df_config["tipo"].str.strip().str.upper()
-            ))
-            logger.info("CONFIG cargada: %s", tipo_posicion)
+            df_config = df_config.dropna(subset=["ticker"])
+            tickers = df_config["ticker"].str.strip().str.upper()
+
+            # Tipo A/B
+            if "tipo" in df_config.columns:
+                tipos_validos = df_config["tipo"].notna()
+                tipo_posicion = dict(zip(
+                    tickers[tipos_validos],
+                    df_config.loc[tipos_validos, "tipo"].str.strip().str.upper()
+                ))
+
+            # TIR objetivo desde CONFIG (reemplaza el dict hardcodeado)
+            if "tir_objetivo" in df_config.columns:
+                for _, row in df_config.iterrows():
+                    t = str(row["ticker"]).strip().upper()
+                    val = row["tir_objetivo"]
+                    if pd.notna(val) and str(val).strip() not in ("", "nan"):
+                        try:
+                            TIR_OBJETIVO[t] = float(val)
+                        except (ValueError, TypeError):
+                            logger.warning("tir_objetivo inválido para %s: %s", t, val)
+
+            logger.info("CONFIG cargada — tipos: %s | TIR objetivos: %s", tipo_posicion, TIR_OBJETIVO)
         else:
-            logger.warning("Hoja CONFIG no tiene columnas 'ticker' y 'tipo'")
+            logger.warning("Hoja CONFIG no tiene columna 'ticker' — se ignora")
     except Exception as e:
         logger.warning("No se pudo leer CONFIG desde SALIDAS_MONITOR: %s", e)
 
