@@ -157,7 +157,7 @@ def generar_excel(
     # ── Cargar hojas previas ───────────────────────────────────────────────
     df_hist_prev = pd.DataFrame(columns=COLS_ESTADO)
     df_cambios_prev = pd.DataFrame(columns=COLS_CAMBIOS)
-    df_config = pd.DataFrame(columns=["ticker", "tipo"])
+    df_config = pd.DataFrame(columns=["ticker", "tipo", "tir_objetivo", "comentarios"])
 
     if bytes_existente:
         wb_prev = load_workbook(io.BytesIO(bytes_existente))
