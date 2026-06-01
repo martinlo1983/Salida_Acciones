@@ -93,20 +93,37 @@ def main():
         logger.info("SALIDAS_MONITOR.xlsx no existe aún — se creará desde cero.")
         bytes_monitor_prev = None
 
-    # Leer hoja CONFIG de SALIDAS_MONITOR (tipo A/B por ticker)
+    # Leer hoja CONFIG de SALIDAS_MONITOR (tipo A/B, objetivo de rentabilidad y comentarios)
     tipo_posicion = {}
     try:
         df_config = drive.download_sheet("monitor", "CONFIG")
         df_config.columns = [str(c).strip().lower() for c in df_config.columns]
-        if "ticker" in df_config.columns and "tipo" in df_config.columns:
-            df_config = df_config.dropna(subset=["ticker", "tipo"])
-            tipo_posicion = dict(zip(
-                df_config["ticker"].str.strip().str.upper(),
-                df_config["tipo"].str.strip().str.upper()
-            ))
-            logger.info("CONFIG cargada: %s", tipo_posicion)
+        if "ticker" in df_config.columns:
+            df_config = df_config.dropna(subset=["ticker"])
+            tickers = df_config["ticker"].str.strip().str.upper()
+
+            # Tipo A/B
+            if "tipo" in df_config.columns:
+                tipos_validos = df_config["tipo"].notna()
+                tipo_posicion = dict(zip(
+                    tickers[tipos_validos],
+                    df_config.loc[tipos_validos, "tipo"].str.strip().str.upper()
+                ))
+
+            # Objetivo de rentabilidad % desde CONFIG
+            if "tir_objetivo" in df_config.columns:
+                for _, row in df_config.iterrows():
+                    t = str(row["ticker"]).strip().upper()
+                    val = row["tir_objetivo"]
+                    if pd.notna(val) and str(val).strip() not in ("", "nan"):
+                        try:
+                            TIR_OBJETIVO[t] = float(val)
+                        except (ValueError, TypeError):
+                            logger.warning("tir_objetivo inválido para %s: %s", t, val)
+
+            logger.info("CONFIG cargada — tipos: %s | Objetivos rentab.: %s", tipo_posicion, TIR_OBJETIVO)
         else:
-            logger.warning("Hoja CONFIG no tiene columnas 'ticker' y 'tipo'")
+            logger.warning("Hoja CONFIG no tiene columna 'ticker' — se ignora")
     except Exception as e:
         logger.warning("No se pudo leer CONFIG desde SALIDAS_MONITOR: %s", e)
 
