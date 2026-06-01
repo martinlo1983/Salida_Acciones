@@ -50,7 +50,7 @@ COLS_ESTADO = [
     "stop_t1_usd", "t1_activo", "t1_activado",
     "stop_t2_usd", "t2_activo", "t2_activado", "y_pct",
     "fase_modelo", "accion_modelo", "flag_revision", "tamano_posicion_pct",
-    "t3_estado",
+    "t3_estado", "t3_precio_objetivo", "tir_objetivo",
     # Alerta final
     "alerta_emoji", "alerta_texto",
 ]
@@ -206,6 +206,13 @@ def generar_excel(
     df_hist = pd.concat([df_hist_prev, df_actual], ignore_index=True)
 
     # ── Escribir Excel ─────────────────────────────────────────────────────
+    # Normalizar nombres de columnas de CONFIG (quitar espacios, lowercase → uppercase)
+    df_config.columns = [str(c).strip().upper() for c in df_config.columns]
+    # Asegurar que siempre existan las columnas mínimas esperadas
+    for col in ["TICKER", "TIPO", "TIR_OBJETIVO", "COMENTARIOS"]:
+        if col not in df_config.columns:
+            df_config[col] = None
+
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
         df_actual.to_excel(writer, sheet_name="ESTADO_ACTUAL", index=False)
