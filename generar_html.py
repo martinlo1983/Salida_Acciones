@@ -142,8 +142,13 @@ TOOLTIPS = {
         "desc": "Porcentaje del capital asignado que el modelo sugiere mantener. En señales de EUFORIA: posición 75-100% → reducir a 50%, posición 50% → reducir a 25%, posición 25% → mantener o salir total a criterio.",
     },
     "t3_estado": {
-        "titulo": "T3 — TIR objetivo (toma parcial)",
-        "desc": "En lugar de precio objetivo fijo, T3 usa la TIR anualizada actual vs. un objetivo definido al entrar. No aplica antes de 90 días. Si se alcanza: EXPANSIÓN/RECUPERACIÓN → reducción 50%; EUFORIA/DETERIORO/TRANSICIÓN → salida total. T3 y T2 corren en paralelo.",
+        "titulo": "T3 — Objetivo de rentabilidad (toma parcial)",
+        "desc": "Se activa cuando el precio supera el objetivo % sobre PPP configurado en CONFIG. Aplica tanto a Tipo A como Tipo B. Acción según fase del modelo: EXPANSIÓN / RECUPERACIÓN → reducción 50% (seguís en la posición); EUFORIA / DETERIORO / TRANSICIÓN → salida total. Corre en paralelo con T2, el que se active primero manda.",
+    },
+    "tir_objetivo": {
+        "titulo": "Objetivo de rentabilidad (%)",
+        "desc": "Ganancia absoluta sobre el PPP que definiste como meta al entrar. Se configura en la hoja CONFIG del Excel. El precio objetivo es fijo: PPP × (1 + objetivo%). Cuando el precio lo supera, T3 se activa independientemente del tiempo transcurrido.",
+        "formula": "Precio objetivo = PPP × (1 + objetivo%)",
     },
     "alerta_texto": {
         "titulo": "Alerta de salida",
@@ -593,6 +598,9 @@ function ruler(r) {
   const mn = Math.min(...vals) * 0.93, mx = Math.max(...vals) * 1.05, rng = mx - mn;
   const pct = v => ((v - mn) / rng * 100).toFixed(2);
 
+  // Precio objetivo T3 — viene calculado desde reglas_tacticos.py
+  const precioT3 = r.t3_precio_objetivo || null;
+
   // Definir marcadores ordenados de menor a mayor valor
   const raw = [];
   if (r.stop_t1_usd) raw.push({ v: r.stop_t1_usd, color: '#DC2626', label: r.t1_activo ? 'Stop T1' : 'Stop T1 (ref)', big: false });
@@ -601,6 +609,7 @@ function ruler(r) {
   if (r.ppp_equiv_usd) raw.push({ v: r.ppp_equiv_usd, color: '#7C3AED', label: 'PPP compra', big: false });
   raw.push({ v: r.precio_actual_usd, color: '#1D4ED8', label: 'Precio actual', big: true });
   if (r.maximo_desde_entrada_usd) raw.push({ v: r.maximo_desde_entrada_usd, color: '#059669', label: 'Máximo', big: false });
+  if (precioT3) raw.push({ v: precioT3, color: '#9333EA', label: 'Objetivo T3 (' + r.tir_objetivo + '%)', big: false });
   const markers = raw.filter(m => m.v != null && m.v > 0).sort((a, b) => a.v - b.v);
 
   const gan = r.ganancia_pct || 0;
@@ -743,12 +752,26 @@ function stopRows(r) {
     // T3
     const t3 = stops.t3;
     const t3rCls = t3.estado === 'activado' ? 'activado' : t3.estado === 'proximo' ? 'pendiente' : 'no-aplica';
+
+    // Precio objetivo T3 — viene calculado desde reglas_tacticos.py
+    let precioT3 = r.t3_precio_objetivo || null;
+    const t3PriceStr = precioT3 ? '$' + precioT3.toFixed(2) : '<span class="dim">—</span>';
+    const t3fw = (precioT3 && maxV) ? (precioT3 / maxV * 100).toFixed(1) : 0;
+    const t3Dist = (pr && precioT3) ? ((precioT3 - pr) / pr * 100) : null;
+    const t3DistStr = t3Dist != null
+      ? (t3Dist >= 0 ? '+' : '') + t3Dist.toFixed(1) + '% hasta obj. · TIR ' + r.tir_objetivo + '%'
+      : (r.tir_objetivo ? 'TIR obj: ' + r.tir_objetivo + '%' : '');
+    const t3barColor = t3.estado === 'activado' ? '#DC2626' : '#9333EA';
+
     rows.push(
       '<div class="stop-row ' + t3rCls + '">' +
-      '<div class="stop-name">T3 — TIR objetivo<span class="tip-icon" data-stopkey="t3_estado">?</span></div>' +
-      '<div class="stop-price"><span class="dim">—</span></div>' +
-      '<div></div>' +
-      '<div>' + stopStatusBadge(t3.estado === 'activado' ? 'activado_t3' : t3.estado) + '</div>' +
+      '<div class="stop-name">T3 — Objetivo %<span class="tip-icon" data-stopkey="t3_estado">?</span></div>' +
+      '<div class="stop-price">' + t3PriceStr + '</div>' +
+      '<div class="stop-bar-bg">' +
+        (precioT3 ? '<div class="stop-bar-fill" style="width:' + t3fw + '%;background:' + t3barColor + ';opacity:.4"></div>' : '') +
+        '<div class="stop-cur" style="left:' + curW + '%"></div>' +
+      '</div>' +
+      '<div class="stop-dist">' + (t3DistStr || stopStatusBadge(t3.estado)) + '</div>' +
       '<div class="stop-nota">' + (t3.texto || 'No configurada para este ticker.') + '</div>' +
       '</div>'
     );
@@ -880,6 +903,9 @@ function showT(ticker) {
     cards.appendChild(mkCard('Tamaño pos.', r.tamano_posicion_pct != null ? r.tamano_posicion_pct + '%' : '—', '', 'tamano_posicion_pct'));
     const flagCls = r.flag_revision ? 'neg' : '';
     cards.appendChild(mkCard('Flag revisión', '<span class="' + flagCls + '">' + (r.flag_revision ? 'SÍ ⚠' : 'No') + '</span>', '', 'flag_revision'));
+    if (r.tir_objetivo != null) {
+      cards.appendChild(mkCard('Objetivo rentab.', r.tir_objetivo + '% sobre PPP', 'sm', 'tir_objetivo'));
+    }
   }
 
   // Ruler panel
@@ -899,7 +925,7 @@ function showT(ticker) {
   if (sat) {
     pt2.innerHTML = 'Stops activos — Satélites (S1 trailing · S2 rotación · S3 parking) ';
   } else {
-    pt2.innerHTML = 'Stops tácticos — <span style="font-style:normal">T1 fijo · T2 trailing · T3 TIR objetivo</span> ';
+    pt2.innerHTML = 'Stops tácticos — <span style="font-style:normal">T1 fijo · T2 trailing · T3 objetivo %</span> ';
   }
   const tipPanelKey = sat ? 'stop_s1_usd' : 'stop_t1_usd';
   pt2.appendChild(makeTip(tips[tipPanelKey]));
