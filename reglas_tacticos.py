@@ -63,7 +63,6 @@ Y_TRAILING_30_60 = {
 Y_TRAILING_MAS_60 = {t: 0.30 for t in Y_TRAILING_BASE}  # tope 30% para todos
 
 GANANCIA_T2_ACTIVA = 0.10   # T2 entra cuando ganancia > 10%
-T3_DIAS_MINIMOS   = 90      # T3 no aplica antes de 90 días
 
 
 # ─── Lectura del modelo desde Analizador_Acciones.xlsx ───────────────────────
@@ -167,50 +166,73 @@ def calcular_t2(tipo: str, ppp_usd: float, precio_actual: float, maximo_usd: flo
 # ─── T3 ───────────────────────────────────────────────────────────────────────
 
 def evaluar_t3(
-    tir_actual: Optional[float],
-    tir_objetivo: Optional[float],
-    fecha_primera_compra: date,
+    precio_actual: Optional[float],
+    ppp_usd: Optional[float],
+    objetivo_pct: Optional[float],
     fase_modelo: Optional[str],
 ) -> dict:
     """
-    tir_actual, tir_objetivo: porcentaje anualizado (ej: 25.5 para 25.5%)
+    Evalúa T3 comparando el precio actual contra el precio objetivo.
+
+    objetivo_pct: rentabilidad absoluta sobre PPP (ej: 25 para +25%).
+    precio_objetivo = PPP × (1 + objetivo_pct / 100)
+
+    Si precio_actual >= precio_objetivo → T3 activado.
+    Si precio_actual >= 90% del camino entre PPP y precio_objetivo → PRÓXIMA.
+
+    Acción según fase del modelo:
+      EXPANSIÓN / RECUPERACIÓN → Reducción 50%
+      EUFORIA / DETERIORO / TRANSICIÓN → Salida total
     """
-    dias = (date.today() - fecha_primera_compra).days
+    if objetivo_pct is None:
+        return {"t3_aplica": False, "t3_estado": "Sin objetivo definido"}
 
-    if tir_objetivo is None:
-        return {"t3_aplica": False, "t3_estado": "Sin TIR objetivo definida"}
+    if ppp_usd is None or ppp_usd <= 0:
+        return {"t3_aplica": False, "t3_estado": "Sin PPP disponible para calcular objetivo"}
 
-    if dias < T3_DIAS_MINIMOS:
-        return {
-            "t3_aplica": False,
-            "t3_estado": f"T3 inhibida — solo {dias} días desde entrada (mín {T3_DIAS_MINIMOS})",
-        }
+    if precio_actual is None:
+        return {"t3_aplica": False, "t3_estado": "Sin precio actual"}
 
-    if tir_actual is None:
-        return {"t3_aplica": False, "t3_estado": "TIR actual no disponible"}
+    precio_objetivo = ppp_usd * (1 + objetivo_pct / 100)
+    ganancia_necesaria = precio_objetivo - ppp_usd   # distancia total a recorrer
+    ganancia_actual    = precio_actual - ppp_usd      # distancia recorrida
 
-    if tir_actual < tir_objetivo:
-        proximidad = tir_actual / tir_objetivo if tir_objetivo > 0 else 0
-        if proximidad >= 0.90:
-            return {
-                "t3_aplica": True,
-                "t3_estado": f"🟡 PRÓXIMA — TIR actual {tir_actual:.1f}% ≥ 90% del objetivo {tir_objetivo:.1f}%",
-            }
-        return {
-            "t3_aplica": False,
-            "t3_estado": f"TIR actual {tir_actual:.1f}% < objetivo {tir_objetivo:.1f}%",
-        }
+    # Proximidad: qué % del camino entre PPP y objetivo ya se recorrió
+    proximidad = ganancia_actual / ganancia_necesaria if ganancia_necesaria > 0 else 0
 
-    # TIR objetivo alcanzada
     fase = str(fase_modelo or "").upper()
-    if any(f in fase for f in ["EUFORIA", "DETERIORO", "TRANSICION"]):
+    if any(f in fase for f in ["EUFORIA", "DETERIORO", "TRANSICION", "TRANSICIÓN"]):
         accion = "Salida total"
     else:
         accion = "Reducción 50%"
 
+    if precio_actual >= precio_objetivo:
+        return {
+            "t3_aplica": True,
+            "t3_precio_objetivo": round(precio_objetivo, 2),
+            "t3_estado": (
+                f"🟠 OBJETIVO ALCANZADO — precio ${precio_actual:.2f} ≥ "
+                f"${precio_objetivo:.2f} (PPP +{objetivo_pct:.0f}%) → {accion} | Fase: {fase_modelo}"
+            ),
+        }
+
+    if proximidad >= 0.90:
+        return {
+            "t3_aplica": True,
+            "t3_precio_objetivo": round(precio_objetivo, 2),
+            "t3_estado": (
+                f"🟡 PRÓXIMA — precio ${precio_actual:.2f} al "
+                f"{proximidad:.0%} del objetivo ${precio_objetivo:.2f} (+{objetivo_pct:.0f}% sobre PPP)"
+            ),
+        }
+
     return {
-        "t3_aplica": True,
-        "t3_estado": f"🟠 TIR OBJETIVO ALCANZADA ({tir_actual:.1f}% ≥ {tir_objetivo:.1f}%) → {accion} | Fase modelo: {fase_modelo}",
+        "t3_aplica": False,
+        "t3_precio_objetivo": round(precio_objetivo, 2),
+        "t3_estado": (
+            f"Precio ${precio_actual:.2f} — objetivo ${precio_objetivo:.2f} "
+            f"(+{objetivo_pct:.0f}% sobre PPP) | Falta {((precio_objetivo - precio_actual) / precio_actual * 100):.1f}%"
+        ),
     }
 
 
