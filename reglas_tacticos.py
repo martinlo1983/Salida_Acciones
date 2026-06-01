@@ -211,7 +211,7 @@ def evaluar_t3(
             "t3_aplica": True,
             "t3_precio_objetivo": round(precio_objetivo, 2),
             "t3_estado": (
-                f"🟠 OBJETIVO ALCANZADO — precio ${precio_actual:.2f} ≥ "
+                f"OBJETIVO ALCANZADO — precio ${precio_actual:.2f} ≥ "
                 f"${precio_objetivo:.2f} (PPP +{objetivo_pct:.0f}%) → {accion} | Fase: {fase_modelo}"
             ),
         }
@@ -221,7 +221,7 @@ def evaluar_t3(
             "t3_aplica": True,
             "t3_precio_objetivo": round(precio_objetivo, 2),
             "t3_estado": (
-                f"🟡 PRÓXIMA — precio ${precio_actual:.2f} al "
+                f"PRÓXIMA — precio ${precio_actual:.2f} al "
                 f"{proximidad:.0%} del objetivo ${precio_objetivo:.2f} (+{objetivo_pct:.0f}% sobre PPP)"
             ),
         }
@@ -283,8 +283,22 @@ def generar_alerta_tactico(
     t4: dict,
 ) -> tuple[str, str]:
     """
-    Prioridad: T4 DETERIORO > T1 activado > T2 activado > T4 EUFORIA > T3 > T4 REVISION
+    Prioridad:
+      1. T4 DETERIORO (salida total)
+      2. T1 activado (stop fijo)
+      3. T2 activado (trailing stop)
+      4. T3 OBJETIVO ALCANZADO → Salida total (más urgente que T4 euforia)
+      5. T4 EUFORIA (reducción parcial)
+      6. T3 OBJETIVO ALCANZADO → Reducción 50%
+      7. T3 PRÓXIMA
+      8. T4 REVISIÓN
+      9. MANTENER
     """
+    t3_estado = t3.get("t3_estado", "")
+    t3_aplica = t3.get("t3_aplica", False)
+    t3_alcanzado = t3_aplica and "OBJETIVO ALCANZADO" in t3_estado
+    t3_salida_total = t3_alcanzado and "Salida total" in t3_estado
+
     # T4 deterioro / venta total — máxima prioridad
     if t4.get("t4_alerta") and "SALIR" in t4["t4_alerta"]:
         return ("🔴", t4["t4_alerta"])
@@ -297,16 +311,21 @@ def generar_alerta_tactico(
     if t2.get("t2_activado"):
         return ("🔴", f"STOP T2 ACTIVADO — precio ≤ ${t2['stop_t2_usd']:.2f} (trailing {t2['y_pct']:.1%})")
 
+    # T3 objetivo alcanzado → Salida total (prioridad sobre T4 euforia)
+    if t3_salida_total:
+        return ("🔴", t3_estado)
+
     # T4 euforia / reducción parcial
     if t4.get("t4_alerta") and "REDUCIR" in t4["t4_alerta"]:
         return ("🟠", t4["t4_alerta"])
 
-    # T3 — TIR objetivo alcanzada o próxima
-    t3_estado = t3.get("t3_estado", "")
-    if t3.get("t3_aplica"):
-        if "PRÓXIMA" in t3_estado:
-            return ("🟡", t3_estado)
+    # T3 objetivo alcanzado → Reducción 50%
+    if t3_alcanzado:
         return ("🟠", t3_estado)
+
+    # T3 próxima al objetivo
+    if t3_aplica and "PRÓXIMA" in t3_estado:
+        return ("🟡", t3_estado)
 
     # T4 revisión de tesis
     if t4.get("t4_alerta") and "REVISAR" in t4["t4_alerta"]:
