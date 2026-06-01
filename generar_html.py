@@ -592,7 +592,7 @@ function initDetalle() {
 
 function ruler(r) {
   const vals = [r.ppp_equiv_usd, r.precio_actual_usd, r.maximo_desde_entrada_usd,
-                r.stop_s1_usd, r.stop_t1_usd, r.stop_t2_usd].filter(v => v != null && v > 0);
+                r.stop_s1_usd, r.stop_t1_usd, r.stop_t2_usd, r.t3_precio_objetivo].filter(v => v != null && v > 0);
   if (!vals.length) return '<div class="dim" style="padding:16px 0;text-align:center">Sin datos de precio</div>';
 
   const mn = Math.min(...vals) * 0.93, mx = Math.max(...vals) * 1.05, rng = mx - mn;
@@ -670,7 +670,7 @@ function stopStatusBadge(estado) {
 function stopRows(r) {
   const pr = r.precio_actual_usd, mx = r.maximo_desde_entrada_usd;
   const sat = r.categoria?.includes('Satelites');
-  const allVals = [pr, mx, r.ppp_equiv_usd, r.stop_s1_usd, r.stop_t1_usd, r.stop_t2_usd].filter(v => v != null && v > 0);
+  const allVals = [pr, mx, r.ppp_equiv_usd, r.stop_s1_usd, r.stop_t1_usd, r.stop_t2_usd, r.t3_precio_objetivo].filter(v => v != null && v > 0);
   if (!allVals.length) return '<div class="empty" style="padding:16px">Sin datos de precio disponibles</div>';
   const maxV = Math.max(...allVals);
   const curW = pr ? (pr / maxV * 100) : 0;
