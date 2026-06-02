@@ -177,6 +177,11 @@ def main():
         # No es exacto pero es la mejor aproximación sin historial de compras en USD subyacente
         maximo_equiv = maximo  # el máximo ya está en USD del subyacente
 
+        # El máximo nunca puede ser menor al PPP: si el precio nunca superó el costo
+        # de compra desde la entrada, el máximo relevante para los stops es el PPP mismo.
+        if maximo_equiv is not None and ppp_equiv is not None:
+            maximo_equiv = max(maximo_equiv, ppp_equiv)
+
         # Base del resultado
         resultado = {
             "ticker":                   ticker,
@@ -188,7 +193,7 @@ def main():
             "ppp_equiv_usd":            round(ppp_equiv, 2) if ppp_equiv else None,
             "fecha_primera_compra":     fecha_entrada,
             "precio_actual_usd":        round(precio_actual, 2),
-            "maximo_desde_entrada_usd": round(maximo, 2) if maximo else None,
+            "maximo_desde_entrada_usd": round(maximo_equiv, 2) if maximo_equiv else None,
             "sigma_mensual_12m":        round(sigma * 100, 2) if sigma else None,
         }
 
