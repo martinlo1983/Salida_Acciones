@@ -201,10 +201,14 @@ def evaluar_s2_s3(ticker: str, df_ranking: pd.DataFrame) -> dict:
     delta = None
     s2_decision = "MANTENER"
 
+    # rank_ef puede ser None o float('nan') dependiendo del origen del dato
+    import math
+    rank_ef_vacio = rank_ef is None or (isinstance(rank_ef, float) and math.isnan(rank_ef))
+
     if s3_activado:
         s2_decision = "N/A (S3 activo)"
-    elif rank_ef is None:
-        # ETF no pasó filtros (momentum negativo) pero está en top 15 bruto
+    elif rank_ef_vacio:
+        # ETF no pasó filtros (momentum negativo o bajo MM200) pero está en top 15 bruto
         s2_decision = "VIGILAR — filtros no cumplidos"
     elif score_etf is not None and score_top5 is not None and score_top5 > 0:
         delta = (score_top5 - score_etf) / score_top5
@@ -249,6 +253,10 @@ def generar_alerta_satelite(
     Combina S1, S2, S3 y retorna (emoji_alerta, texto_alerta).
     El primero en activarse gana.
     """
+    # Sin datos de ranking — ticker no encontrado en el universo
+    if s2s3.get("s2_decision") == "SIN_DATOS":
+        return ("🟡", f"VIGILAR — {ticker} sin datos en ranking, verificar manualmente")
+
     # S3 — salida dura a parking
     if s2s3.get("s3_activado"):
         return ("🔴", f"SALIR A PARKING — {ticker} fuera del top 15 del ranking")
@@ -264,10 +272,11 @@ def generar_alerta_satelite(
         delta_str = f" (Δ={delta:.1%})" if delta else ""
         return ("🔴", f"ROTAR — momentum insuficiente{delta_str} | {s2}")
 
-    # Vigilar (posición 6-10 o filtros no cumplidos)
-    if "VIGILAR" in s2 or "6-10" in s2:
+    # Vigilar (momentum negativo o filtros no cumplidos, rank bruto ≤ 15)
+    if "VIGILAR" in s2:
         rank_ef = s2s3.get("rank_efectivo")
-        return ("🟡", f"VIGILAR — rank efectivo {rank_ef} | calcular Δ al cierre del mes")
+        rank_br = s2s3.get("rank_bruto")
+        return ("🟡", f"VIGILAR — rank bruto {rank_br}, filtros no cumplidos (momentum negativo o bajo MM200)")
 
     # Todo ok
     stop_s1 = s1.get("stop_s1_usd")
